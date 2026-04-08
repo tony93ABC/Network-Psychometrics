@@ -9,11 +9,13 @@ output:
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
+knitr::image_uri("img/Network_Psychometrics.jpg")
 ```
 
 # 1) Centrality metrics for direct connectivity
 
 ![](Network_Psychometrics.jpg)
+
 
 ```{r}
 # ============================================================================
