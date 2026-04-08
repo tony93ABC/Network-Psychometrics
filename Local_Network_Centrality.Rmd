@@ -1,0 +1,209 @@
+---
+title: "Cetrality metrics"
+author: "Antony Bologna"
+date: "2026-04-08"
+output:
+  word_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# 1) Centrality metrics for direct connectivity
+
+![](Network_Psychometrics.jpg)
+
+```{r}
+# ============================================================================
+# INTERACTIVE CENTRALITY CALCULATOR (Shiny + qgraph)
+# ============================================================================
+# This script creates an interactive web app that visualizes network centrality 
+# metrics in real-time. Users can adjust edge weights via sliders and see how 
+# the network structure changes instantly.
+# ============================================================================
+
+# --- 1. LOAD REQUIRED LIBRARIES ---
+# Shiny: Framework for building interactive web apps in R
+# qgraph: Specialized package for visualizing networks with automatic coloring
+library(shiny)
+library(qgraph)
+## Warning: 'qgraph' was built with R version 4.5.2
+
+# ============================================================================
+# SECTION 1: USER INTERFACE (UI) DEFINITION
+# ============================================================================
+# Here we define the visual layout of the app: where buttons/sliders go, 
+# where plots appear, etc. This is purely structural—no calculations happen here.
+
+ui <- fluidPage(
+  # Main title displayed at the top of the app
+  titlePanel("Interactive Centrality Calculator (qgraph)"),
+  
+  # Two-column layout: sidebar (controls) on the left, main content on the right
+  sidebarLayout(
+    # LEFT PANEL: Contains all input controls
+    sidebarPanel(
+      # Instruction text for the user
+      helpText("Drag the sliders to change the edge weights connected to Node X. 
+               Observe how the network and metrics update in real time."),
+      
+      # Slider 1: Weight of edge between X and A
+      # Range: -5 to 5, starting value: 1, increment by 1
+      sliderInput("w_A", 
+                  label = "Weight X - A:", 
+                  min = -5, 
+                  max = 5, 
+                  value = 1, 
+                  step = 1),
+      
+      # Slider 2: Weight of edge between X and B
+      sliderInput("w_B", 
+                  label = "Weight X - B:", 
+                  min = -5, 
+                  max = 5, 
+                  value = -2, 
+                  step = 1),
+      
+      # Slider 3: Weight of edge between X and C
+      sliderInput("w_C", 
+                  label = "Weight X - C:", 
+                  min = -5, 
+                  max = 5, 
+                  value = 3, 
+                  step = 1)
+    ),
+    
+    # RIGHT PANEL: Contains the network plot and results
+    mainPanel(
+      # Network visualization output
+      # Height is fixed at 400px for better layout control
+      plotOutput("networkPlot", height = "400px"),
+      
+      # Horizontal dividing line for visual separation
+      hr(),
+      
+      # Level 4 heading for the results section
+      h4(textOutput("results")),
+      
+      # Information text explaining color conventions
+      # qgraph automatically uses green/blue for positive edges and red for negative
+      helpText("Note: qgraph automatically colors positive edges in green/blue 
+               and negative edges in red. This makes it easy to spot inhibitory 
+               relationships at a glance!")
+    )
+  )
+)
+
+# ============================================================================
+# SECTION 2: SERVER LOGIC
+# ============================================================================
+# This is where all computations happen. The server listens for changes in 
+# the sliders and updates the plot and text outputs reactively.
+
+server <- function(input, output) {
+  
+  # ---- RENDER THE NETWORK PLOT ----
+  # renderPlot() wraps the qgraph code so it runs every time an input changes
+  output$networkPlot <- renderPlot({
+    
+    # STEP 1: Create an empty 4×4 weight matrix
+    # Rows and columns represent nodes: A, B, C, X
+    # All entries start at 0 (no edges)
+    mat <- matrix(0, nrow = 4, ncol = 4)
+    colnames(mat) <- rownames(mat) <- c("A", "B", "C", "X")
+    
+    # STEP 2: Fill in the matrix with slider values
+    # We set both directions (X→A and A→X) because networks are typically undirected.
+    # This ensures the network is symmetric.
+    mat["X", "A"] <- mat["A", "X"] <- input$w_A  # Edge weight between X and A
+    mat["X", "B"] <- mat["B", "X"] <- input$w_B  # Edge weight between X and B
+    mat["X", "C"] <- mat["C", "X"] <- input$w_C  # Edge weight between X and C
+    
+    # STEP 3: Define fixed node positions
+    # This prevents nodes from "dancing around" when edge weights change.
+    # Layout: A in top-left, B in top-right, C in bottom-left, X in center
+    # Each row represents one node (X, Y coordinates)
+    posizioni <- matrix(c(-1,  1,    # Node A: x=-1, y=1
+                          1,   1,    # Node B: x=1, y=1
+                         -1,  -1,    # Node C: x=-1, y=-1
+                          0,   0),   # Node X: x=0, y=0 (center)
+                        ncol = 2, byrow = TRUE)
+    
+    # STEP 4: Draw the network using qgraph
+    # Parameters explained:
+    # - layout: use the fixed positions defined above
+    # - theme: "colorblind" optimizes color contrast for red/blue distinction
+    # - vsize: node size (15 units)
+    # - labels: show node names inside circles
+    # - maximum: cap the thickness of edges at 5 (for visual stability)
+    # - fade: FALSE keeps edges opaque
+    # - mar: margins around the plot (5 on all sides)
+    qgraph(mat,
+           layout = posizioni,
+           theme = "colorblind",
+           vsize = 15,
+           labels = TRUE,
+           maximum = 5,
+           fade = FALSE,
+           mar = c(5, 5, 5, 5))
+  })
+  
+  # ---- RENDER THE RESULTS TEXT ----
+  # renderText() converts R output to text that displays in the UI
+  output$results <- renderText({
+    
+    # Retrieve the current values from the three sliders
+    w_A <- input$w_A
+    w_B <- input$w_B
+    w_C <- input$w_C
+    
+    # METRIC 1: Node Degree
+    # Count how many edges are connected to node X (ignoring edge weight)
+    # A non-zero weight = one connection
+    degree <- sum(c(w_A, w_B, w_C) != 0)
+    
+    # METRIC 2: Node Strength
+    # Sum of the absolute values of all edge weights
+    # This measures the total intensity regardless of direction
+    strength <- abs(w_A) + abs(w_B) + abs(w_C)
+    
+    # METRIC 3: Expected Influence
+    # Sum of edge weights while preserving their signs
+    # Positive edges increase influence; negative edges decrease it
+    # This is the PRIMARY metric used in network psychometrics
+    expected_influence <- w_A + w_B + w_C
+    
+    # Build a formatted text string combining all three metrics
+    # The paste() function concatenates strings with the pipe (|) as separator
+    paste("Degree:", degree,
+          " | Node Strength:", strength,
+          " | Expected Influence:", expected_influence)
+  })
+}
+
+# ============================================================================
+# SECTION 3: LAUNCH THE APPLICATION
+# ============================================================================
+# shinyApp() ties together the UI and server logic and starts the app
+# The app will open in your browser at a local address (usually http://127.0.0.1:3838/)
+
+shinyApp(ui = ui, server = server)
+
+# ============================================================================
+# HOW TO RUN THIS SCRIPT:
+# ============================================================================
+# 1. Make sure you have installed both libraries:
+#    install.packages("shiny")
+#    install.packages("qgraph")
+#
+# 2. Run the entire script (Ctrl+A then Ctrl+Enter, or click "Run App" in RStudio)
+#
+# 3. A new window will open showing the interactive app
+#
+# 4. Drag the sliders and watch the network update in real time!
+#
+# 5. Press ESC or click the "Stop" button to close the app
+# ============================================================================
+```
